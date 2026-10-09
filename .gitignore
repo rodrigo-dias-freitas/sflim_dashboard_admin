@@ -218,3 +218,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- PROTEÇÃO DE DADOS SENSÍVEIS & CLIENTES ---
+data/*.csv
+data/
+.env
+.venv/
+__pycache__/
+*.pyc
