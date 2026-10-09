@@ -45,7 +45,16 @@ def carregar_dados():
     
     # Tratamento básico de colunas e datas
     df['Close Date DT'] = pd.to_datetime(df['Close Date'])
+    df['Open Date DT'] = pd.to_datetime(df['Open Date'])
     df = df.sort_values('Close Date DT').reset_index(drop=True)
+    
+    # Extração de Dia da Semana e Hora de Abertura
+    dias_map = {
+        'Monday': 'Segunda', 'Tuesday': 'Terça', 'Wednesday': 'Quarta',
+        'Thursday': 'Quinta', 'Friday': 'Sexta', 'Saturday': 'Sábado', 'Sunday': 'Domingo'
+    }
+    df['Dia_Semana'] = df['Open Date DT'].dt.day_name().map(dias_map)
+    df['Hora_Abertura'] = df['Open Date DT'].dt.hour
     
     # Cálculos das métricas acumuladas
     df['Acumulado'] = df['Net Realized Profit'].cumsum()
@@ -122,12 +131,11 @@ with col5:
 
 st.divider()
 
-# 7. Gráfico da Curva de Patrimônio & Drawdown (Plotly)
+# 7. Gráfico da Curva de Patrimônio & Drawdown
 st.subheader("📈 Curva de Patrimônio e High Water Mark")
 
 fig = go.Figure()
 
-# Linha do PnL Acumulado
 fig.add_trace(go.Scatter(
     x=df['Close Date DT'], 
     y=df['Acumulado'], 
@@ -136,7 +144,6 @@ fig.add_trace(go.Scatter(
     line=dict(color='#00d26a', width=2)
 ))
 
-# Linha do Topo Histórico (High Water Mark)
 fig.add_trace(go.Scatter(
     x=df['Close Date DT'], 
     y=df['Max_Historico'], 
@@ -147,14 +154,55 @@ fig.add_trace(go.Scatter(
 
 fig.update_layout(
     template="plotly_dark",
-    height=400,
+    height=380,
     margin=dict(l=20, r=20, t=30, b=20),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
-# 8. Tabela de Operações Recentes
+st.divider()
+
+# 8. Matriz Temporal (Performance por Dia da Semana e Horário)
+st.subheader("📊 Matriz Temporal de Eficiência")
+
+col_dia, col_hora = st.columns(2)
+
+# A. Performance por Dia da Semana
+ordem_dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
+pnl_por_dia = df.groupby('Dia_Semana')['Net Realized Profit'].sum().reindex(ordem_dias).dropna()
+
+with col_dia:
+    fig_dia = px.bar(
+        x=pnl_por_dia.index,
+        y=pnl_por_dia.values,
+        labels={'x': 'Dia da Semana', 'y': 'Resultado ($)'},
+        title="Resultado Acumulado por Dia da Semana",
+        color=pnl_por_dia.values,
+        color_continuous_scale=['#ff355e', '#00d26a']
+    )
+    fig_dia.update_layout(template="plotly_dark", showlegend=False, height=320)
+    st.plotly_chart(fig_dia, use_container_width=True)
+
+# B. Performance por Faixa Horária (Abertura da Posição)
+pnl_por_hora = df.groupby('Hora_Abertura')['Net Realized Profit'].sum().reset_index()
+
+with col_hora:
+    fig_hora = px.bar(
+        pnl_por_hora,
+        x='Hora_Abertura',
+        y='Net Realized Profit',
+        labels={'Hora_Abertura': 'Hora do Dia (BRT)', 'Net Realized Profit': 'Resultado ($)'},
+        title="Resultado Acumulado por Faixa Horária",
+        color='Net Realized Profit',
+        color_continuous_scale=['#ff355e', '#00d26a']
+    )
+    fig_hora.update_layout(template="plotly_dark", showlegend=False, height=320)
+    st.plotly_chart(fig_hora, use_container_width=True)
+
+st.divider()
+
+# 9. Tabela de Operações Recentes
 st.subheader("📋 Últimas Operações Registradas")
 st.dataframe(
     df[['Close Date DT', 'Symbol', 'Side', 'Volume', 'Open Price', 'Close Price', 'Net Realized Profit', 'Acumulado', 'Drawdown']].tail(10),
