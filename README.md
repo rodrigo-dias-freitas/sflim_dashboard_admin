@@ -90,13 +90,13 @@ python -m streamlit run app.py
 
 ## 📁 Estrutura do Repositório
 
-sflim_dashboard_admin/
-├── .venv/               # Ambiente virtual Python (ignorado pelo Git)
-├── data/                # Pasta de armazenamento dos relatórios CSV (ignorado pelo Git)
-├── app.py               # Código-fonte principal do Dashboard Streamlit
-├── requirements.txt     # Lista de dependências do projeto
-├── .gitignore           # Regras de exclusão de arquivos sensíveis
-└── README.md            # Documentação técnica do projeto
+- sflim_dashboard_admin/
+    - .venv/               # Ambiente virtual Python (ignorado pelo Git)
+        - data/            # Pasta de armazenamento dos relatórios CSV (ignorado pelo Git)
+    - app.py               # Código-fonte principal do Dashboard Streamlit
+    - requirements.txt     # Lista de dependências do projeto
+    - .gitignore           # Regras de exclusão de arquivos sensíveis
+    - README.md            # Documentação técnica do projeto
 
 ## 🔒 Segurança e Privacidade
 
