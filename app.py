@@ -5,6 +5,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import datetime
 
 # 1. Configuração do Layout do Streamlit
 st.set_page_config(
@@ -23,12 +24,17 @@ st.markdown("""
         border-radius: 8px;
         border-left: 4px solid #00d26a;
     }
-    .agent-box {
-        background-color: #111827;
-        padding: 20px;
-        border-radius: 10px;
-        border: 1px solid #374151;
-        margin-bottom: 25px;
+    .best-asset {
+        background-color: #064e3b;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 5px solid #10b981;
+    }
+    .worst-asset {
+        background-color: #4c0519;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 5px solid #f43f5e;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -46,16 +52,13 @@ def carregar_dados():
     if not arquivos_csv:
         return None
     
-    # Pega o arquivo CSV mais recente da pasta 'data'
     arquivo_mais_recente = max(arquivos_csv, key=os.path.getmtime)
     df = pd.read_csv(arquivo_mais_recente)
     
-    # Tratamento básico de colunas e datas
     df['Close Date DT'] = pd.to_datetime(df['Close Date'])
     df['Open Date DT'] = pd.to_datetime(df['Open Date'])
     df = df.sort_values('Close Date DT').reset_index(drop=True)
     
-    # Extração de Dia da Semana e Hora de Abertura
     dias_map = {
         'Monday': 'Segunda', 'Tuesday': 'Terça', 'Wednesday': 'Quarta',
         'Thursday': 'Quinta', 'Friday': 'Sexta', 'Saturday': 'Sábado', 'Sunday': 'Domingo'
@@ -63,14 +66,12 @@ def carregar_dados():
     df['Dia_Semana'] = df['Open Date DT'].dt.day_name().map(dias_map)
     df['Hora_Abertura'] = df['Open Date DT'].dt.hour
     
-    # Cálculos das métricas acumuladas
     df['Acumulado'] = df['Net Realized Profit'].cumsum()
     df['Max_Historico'] = df['Acumulado'].cummax()
     df['Drawdown'] = df['Acumulado'] - df['Max_Historico']
     
     return df, os.path.basename(arquivo_mais_recente)
 
-# Executa carregamento
 resultado = carregar_dados()
 
 if resultado is None:
@@ -79,7 +80,7 @@ if resultado is None:
 
 df, nome_arquivo = resultado
 
-# 4. Cálculo das Métricas de Risco do Sistema
+# 4. Cálculo das Métricas Gerais
 total_capital = 4610.40
 pnl_acumulado = df['Acumulado'].iloc[-1]
 max_historico = df['Max_Historico'].max()
@@ -89,16 +90,12 @@ max_drawdown = df['Drawdown'].min()
 win_rate = (df['Net Realized Profit'] > 0).mean() * 100
 total_trades = len(df)
 
-# Definição do Status do Sistema com base nas regras
 if drawdown_atual <= -345.00:
     status_sistema = "🚨 ZONA CRÍTICA"
-    cor_status = "red"
 elif drawdown_atual <= -138.00:
     status_sistema = "⚠️ DRAWDOWN INICIADO"
-    cor_status = "orange"
 else:
     status_sistema = "✅ MODO NORMAL (ZONA SEGURA)"
-    cor_status = "green"
 
 # 5. Barra Lateral (Sidebar)
 with st.sidebar:
@@ -118,7 +115,7 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# 6. Topo do Dashboard — KPIs em Destaque (Cards)
+# 6. Topo do Dashboard — KPIs em Destaque
 col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
@@ -138,10 +135,63 @@ with col5:
 
 st.divider()
 
-# 7. Módulo do Agente de IA & Diagnóstico Executivo
-with st.expander("🤖 **Relatório e Insights do Agente SFLIM**", expanded=True):
-    st.subheader("📋 Diagnóstico do Co-Piloto de Risco")
+# 7. BLOCOS DE DESTAQUE INSTANTÂNEO: ATIVO DESTAQUE & CALENDÁRIO
+pnl_por_ativo = df.groupby('Symbol')['Net Realized Profit'].sum().sort_values(ascending=False)
+melhor_ativo = pnl_por_ativo.index[0]
+pnl_melhor_ativo = pnl_por_ativo.iloc[0]
+
+pnl_pior_ativo = pnl_por_ativo.iloc[-1]
+pior_ativo = pnl_por_ativo.index[-1]
+
+hoje = datetime.date.today()
+inicio_semana = hoje - datetime.timedelta(days=hoje.weekday())
+fim_semana = inicio_semana + datetime.timedelta(days=4)
+
+eventos_chave_outubro = [
+    {"data": datetime.date(2026, 10, 2), "evento": "US Non-Farm Payroll (NFP)", "horario": "09:30 BRT", "impacto": "🔴 Alto"},
+    {"data": datetime.date(2026, 10, 7), "evento": "Ata da Reunião do FOMC (FOMC Minutes)", "horario": "15:00 BRT", "impacto": "🟡 Médio/Alto"},
+    {"data": datetime.date(2026, 10, 14), "evento": "US CPI (Inflação ao Consumidor)", "horario": "09:30 BRT", "impacto": "🔴 Alto"},
+    {"data": datetime.date(2026, 10, 28), "evento": "Decisão de Juros do Fed (FOMC)", "horario": "15:00 BRT", "impacto": "🔴 Crítico"},
+]
+
+# Filtrar eventos que caem na semana atual
+eventos_da_semana = [e for e in eventos_chave_outubro if inicio_semana <= e['data'] <= fim_semana]
+
+col_a1, col_a2, col_cal = st.columns([1, 1, 2])
+
+with col_a1:
+    st.markdown(f"""
+    <div class="best-asset">
+        <span style="font-size: 14px; color: #a7f3d0;">🏆 MELHOR ATIVO</span>
+        <h2 style="margin: 0; color: #ffffff;">{melhor_ativo}</h2>
+        <h3 style="margin: 0; color: #34d399;">+${pnl_melhor_ativo:,.2f} USD</h3>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_a2:
+    st.markdown(f"""
+    <div class="worst-asset">
+        <span style="font-size: 14px; color: #fecdd3;">⚠️ PIOR ATIVO (MAIOR DRENO)</span>
+        <h2 style="margin: 0; color: #ffffff;">{pior_ativo}</h2>
+        <h3 style="margin: 0; color: #fb7185;">${pnl_pior_ativo:,.2f} USD</h3>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_cal:
+    st.subheader(f"📅 Calendário Econômico — Semana ({inicio_semana.strftime('%d/%m')} a {fim_semana.strftime('%d/%m')})")
     
+    if eventos_da_semana:
+        for ev in eventos_da_semana:
+            st.markdown(f"• **{ev['data'].strftime('%d/%m (%a)')} - {ev['horario']}:** **{ev['evento']}** [{ev['impacto']}]")
+    else:
+        st.success("✅ **Semana sem divulgação de NFP/CPI de alto impacto direto.** Operação padrão em vigor.")
+    
+    st.caption("💡 *O sistema calcula automaticamente a janela de segunda a sexta da data atual do seu computador.*")
+
+st.divider()
+
+# 8. Módulo do Agente de IA & Diagnóstico Executivo
+with st.expander("🤖 **Relatório e Insights do Agente SFLIM**", expanded=True):
     col_ag1, col_ag2 = st.columns(2)
     
     with col_ag1:
@@ -150,14 +200,12 @@ with st.expander("🤖 **Relatório e Insights do Agente SFLIM**", expanded=True
             st.error("""
             **SISTEMA EM ZONA CRÍTICA (-$345.00 ou superior)**
             - **Ação:** Modo defensivo ativado. Reduzir o lote base para o mínimo absoluto (0.06).
-            - **Restrição:** Proibido abrir novas operações em ativos de alta volatilidade (NDXUSD / XAUUSD) sem confirmação dupla.
-            - **Pausa:** Considerar pausa de 24h a 48h para reavaliação de estratégia.
+            - **Restrição:** Proibido abrir novas operações em ativos de alta volatilidade sem confirmação.
             """)
         elif status_sistema == "⚠️ DRAWDOWN INICIADO":
             st.warning("""
             **DRAWDOWN INICIADO (-$138.00 ou superior)**
-            - **Ação:** Rebaixamento em relação ao topo histórico ativado.
-            - **Restrição:** Mantido o lote base obrigatoriamente em **0.06** (sem aumentos para 0.08).
+            - **Ação:** Mantido o lote base obrigatoriamente em **0.06** (sem aumentos para 0.08).
             - **Limite Diário:** Aplicar trava estrita de máximo 2 stops no mesmo dia (-$72.00).
             """)
         else:
@@ -169,22 +217,86 @@ with st.expander("🤖 **Relatório e Insights do Agente SFLIM**", expanded=True
             """)
 
     with col_ag2:
-        st.markdown("#### 📅 Alerta de Calendário & Filtro Temporal")
-        
-        # Filtro de Sexta-feira
-        pnl_sextas = df[df['Dia_Semana'] == 'Sexta']['Net Realized Profit'].sum()
-        
-        st.info(f"""
-        **Regra de Sexta-feira:**
-        - **Resultado Histórico nas Sextas:** `${pnl_sextas:,.2f}`
-        - **Diretriz Padrão:** **NÃO OPERAR** nas sextas-feiras comuns.
-        - **Exceção Exclusiva:** Liberado apenas em sextas com divulgação do **Payroll (NFP)** ou **CPI**, na janela das 09:30h às 11:00h BRT, com lote fixo em **0.06**.
-        - **Horários Proibidos:** Madrugada (22:00h às 04:59h BRT) bloqueada permanentemente.
-        """)
+        st.markdown("#### 📊 Análise por Ativo")
+        st.markdown(f"- **Ativo de Maior Consistência:** `{melhor_ativo}` (Total: **+${pnl_melhor_ativo:,.2f}**)")
+        st.markdown(f"- **Ponto de Atenção/Vazamento:** `{pior_ativo}` (Total: **${pnl_pior_ativo:,.2f}**)")
+        st.caption("Recomendação: Se o drawdown aproximar-se de $138, suspenda novas entradas no ativo de pior performance.")
 
 st.divider()
 
-# 8. Gráfico da Curva de Patrimônio & Drawdown
+# 9. Performance por Ativo (Ranking Completo)
+st.subheader("🥇 Ranking de Performance por Ativo")
+
+pnl_por_ativo_df = df.groupby('Symbol')['Net Realized Profit'].sum().reset_index()
+pnl_por_ativo_df = pnl_por_ativo_df.sort_values(by='Net Realized Profit', ascending=True)
+
+pnl_por_ativo_df['Cor'] = pnl_por_ativo_df['Net Realized Profit'].apply(lambda x: '#00d26a' if x >= 0 else '#ff355e')
+
+fig_ativo = go.Figure()
+
+fig_ativo.add_trace(go.Bar(
+    y=pnl_por_ativo_df['Symbol'],
+    x=pnl_por_ativo_df['Net Realized Profit'],
+    orientation='h',
+    marker=dict(color=pnl_por_ativo_df['Cor']),
+    text=pnl_por_ativo_df['Net Realized Profit'].apply(lambda x: f"${x:,.2f}"),
+    textposition='auto'
+))
+
+# Linha de referência no ZERO
+fig_ativo.add_vline(x=0, line_width=1.5, line_color="#ffffff", line_dash="dash")
+
+fig_ativo.update_layout(
+    template="plotly_dark",
+    height=400,
+    xaxis_title="Resultado Acumulado ($)",
+    yaxis_title="Ativo / Símbolo",
+    margin=dict(l=20, r=20, t=30, b=20),
+    showlegend=False
+)
+
+st.plotly_chart(fig_ativo, use_container_width=True)
+
+st.divider()
+
+# 10. Matriz Temporal (Performance por Dia da Semana e Horário)
+st.subheader("📊 Matriz Temporal de Eficiência")
+
+col_dia, col_hora = st.columns(2)
+
+ordem_dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
+pnl_por_dia = df.groupby('Dia_Semana')['Net Realized Profit'].sum().reindex(ordem_dias).dropna()
+
+with col_dia:
+    fig_dia = px.bar(
+        x=pnl_por_dia.index,
+        y=pnl_por_dia.values,
+        labels={'x': 'Dia da Semana', 'y': 'Resultado ($)'},
+        title="Resultado Acumulado por Dia da Semana",
+        color=pnl_por_dia.values,
+        color_continuous_scale=['#ff355e', '#00d26a']
+    )
+    fig_dia.update_layout(template="plotly_dark", showlegend=False, height=300)
+    st.plotly_chart(fig_dia, use_container_width=True)
+
+pnl_por_hora = df.groupby('Hora_Abertura')['Net Realized Profit'].sum().reset_index()
+
+with col_hora:
+    fig_hora = px.bar(
+        pnl_por_hora,
+        x='Hora_Abertura',
+        y='Net Realized Profit',
+        labels={'Hora_Abertura': 'Hora do Dia (BRT)', 'Net Realized Profit': 'Resultado ($)'},
+        title="Resultado Acumulado por Faixa Horária",
+        color='Net Realized Profit',
+        color_continuous_scale=['#ff355e', '#00d26a']
+    )
+    fig_hora.update_layout(template="plotly_dark", showlegend=False, height=300)
+    st.plotly_chart(fig_hora, use_container_width=True)
+
+st.divider()
+
+# 11. Gráfico da Curva de Patrimônio & Drawdown
 st.subheader("📈 Curva de Patrimônio e High Water Mark")
 
 fig = go.Figure()
@@ -207,7 +319,7 @@ fig.add_trace(go.Scatter(
 
 fig.update_layout(
     template="plotly_dark",
-    height=380,
+    height=350,
     margin=dict(l=20, r=20, t=30, b=20),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
 )
@@ -216,44 +328,7 @@ st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
 
-# 9. Matriz Temporal (Performance por Dia da Semana e Horário)
-st.subheader("📊 Matriz Temporal de Eficiência")
-
-col_dia, col_hora = st.columns(2)
-
-ordem_dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
-pnl_por_dia = df.groupby('Dia_Semana')['Net Realized Profit'].sum().reindex(ordem_dias).dropna()
-
-with col_dia:
-    fig_dia = px.bar(
-        x=pnl_por_dia.index,
-        y=pnl_por_dia.values,
-        labels={'x': 'Dia da Semana', 'y': 'Resultado ($)'},
-        title="Resultado Acumulado por Dia da Semana",
-        color=pnl_por_dia.values,
-        color_continuous_scale=['#ff355e', '#00d26a']
-    )
-    fig_dia.update_layout(template="plotly_dark", showlegend=False, height=320)
-    st.plotly_chart(fig_dia, use_container_width=True)
-
-pnl_por_hora = df.groupby('Hora_Abertura')['Net Realized Profit'].sum().reset_index()
-
-with col_hora:
-    fig_hora = px.bar(
-        pnl_por_hora,
-        x='Hora_Abertura',
-        y='Net Realized Profit',
-        labels={'Hora_Abertura': 'Hora do Dia (BRT)', 'Net Realized Profit': 'Resultado ($)'},
-        title="Resultado Acumulado por Faixa Horária",
-        color='Net Realized Profit',
-        color_continuous_scale=['#ff355e', '#00d26a']
-    )
-    fig_hora.update_layout(template="plotly_dark", showlegend=False, height=320)
-    st.plotly_chart(fig_hora, use_container_width=True)
-
-st.divider()
-
-# 10. Tabela de Operações Recentes
+# 12. Tabela de Operações Recentes
 st.subheader("📋 Últimas Operações Registradas")
 st.dataframe(
     df[['Close Date DT', 'Symbol', 'Side', 'Volume', 'Open Price', 'Close Price', 'Net Realized Profit', 'Acumulado', 'Drawdown']].tail(10),
