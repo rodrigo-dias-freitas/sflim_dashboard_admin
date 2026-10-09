@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilo visual limpo
+# Estilo visual
 st.markdown("""
 <style>
     .metric-card {
@@ -22,6 +22,13 @@ st.markdown("""
         padding: 15px;
         border-radius: 8px;
         border-left: 4px solid #00d26a;
+    }
+    .agent-box {
+        background-color: #111827;
+        padding: 20px;
+        border-radius: 10px;
+        border: 1px solid #374151;
+        margin-bottom: 25px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -131,7 +138,53 @@ with col5:
 
 st.divider()
 
-# 7. Gráfico da Curva de Patrimônio & Drawdown
+# 7. Módulo do Agente de IA & Diagnóstico Executivo
+with st.expander("🤖 **Relatório e Insights do Agente SFLIM**", expanded=True):
+    st.subheader("📋 Diagnóstico do Co-Piloto de Risco")
+    
+    col_ag1, col_ag2 = st.columns(2)
+    
+    with col_ag1:
+        st.markdown("#### 🚨 Diretrizes Operacionais")
+        if status_sistema == "🚨 ZONA CRÍTICA":
+            st.error("""
+            **SISTEMA EM ZONA CRÍTICA (-$345.00 ou superior)**
+            - **Ação:** Modo defensivo ativado. Reduzir o lote base para o mínimo absoluto (0.06).
+            - **Restrição:** Proibido abrir novas operações em ativos de alta volatilidade (NDXUSD / XAUUSD) sem confirmação dupla.
+            - **Pausa:** Considerar pausa de 24h a 48h para reavaliação de estratégia.
+            """)
+        elif status_sistema == "⚠️ DRAWDOWN INICIADO":
+            st.warning("""
+            **DRAWDOWN INICIADO (-$138.00 ou superior)**
+            - **Ação:** Rebaixamento em relação ao topo histórico ativado.
+            - **Restrição:** Mantido o lote base obrigatoriamente em **0.06** (sem aumentos para 0.08).
+            - **Limite Diário:** Aplicar trava estrita de máximo 2 stops no mesmo dia (-$72.00).
+            """)
+        else:
+            st.success("""
+            **MODO NORMAL / ZONA SEGURA**
+            - **Ação:** Operação dentro dos parâmetros padrão.
+            - **Lote Permitido:** Lote base em 0.06; liberado até 0.08 em ativos menos voláteis (SPXUSD).
+            - **Risco Máximo por Trade:** $36.00 por operação (~0,8% da banca).
+            """)
+
+    with col_ag2:
+        st.markdown("#### 📅 Alerta de Calendário & Filtro Temporal")
+        
+        # Filtro de Sexta-feira
+        pnl_sextas = df[df['Dia_Semana'] == 'Sexta']['Net Realized Profit'].sum()
+        
+        st.info(f"""
+        **Regra de Sexta-feira:**
+        - **Resultado Histórico nas Sextas:** `${pnl_sextas:,.2f}`
+        - **Diretriz Padrão:** **NÃO OPERAR** nas sextas-feiras comuns.
+        - **Exceção Exclusiva:** Liberado apenas em sextas com divulgação do **Payroll (NFP)** ou **CPI**, na janela das 09:30h às 11:00h BRT, com lote fixo em **0.06**.
+        - **Horários Proibidos:** Madrugada (22:00h às 04:59h BRT) bloqueada permanentemente.
+        """)
+
+st.divider()
+
+# 8. Gráfico da Curva de Patrimônio & Drawdown
 st.subheader("📈 Curva de Patrimônio e High Water Mark")
 
 fig = go.Figure()
@@ -163,12 +216,11 @@ st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
 
-# 8. Matriz Temporal (Performance por Dia da Semana e Horário)
+# 9. Matriz Temporal (Performance por Dia da Semana e Horário)
 st.subheader("📊 Matriz Temporal de Eficiência")
 
 col_dia, col_hora = st.columns(2)
 
-# A. Performance por Dia da Semana
 ordem_dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
 pnl_por_dia = df.groupby('Dia_Semana')['Net Realized Profit'].sum().reindex(ordem_dias).dropna()
 
@@ -184,7 +236,6 @@ with col_dia:
     fig_dia.update_layout(template="plotly_dark", showlegend=False, height=320)
     st.plotly_chart(fig_dia, use_container_width=True)
 
-# B. Performance por Faixa Horária (Abertura da Posição)
 pnl_por_hora = df.groupby('Hora_Abertura')['Net Realized Profit'].sum().reset_index()
 
 with col_hora:
@@ -202,7 +253,7 @@ with col_hora:
 
 st.divider()
 
-# 9. Tabela de Operações Recentes
+# 10. Tabela de Operações Recentes
 st.subheader("📋 Últimas Operações Registradas")
 st.dataframe(
     df[['Close Date DT', 'Symbol', 'Side', 'Volume', 'Open Price', 'Close Price', 'Net Realized Profit', 'Acumulado', 'Drawdown']].tail(10),
