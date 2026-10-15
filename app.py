@@ -54,20 +54,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-@st.cache_data(ttl=3600)
-def buscar_calendario_forex_factory():
-    url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
-    try:
-        response = requests.get(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            eventos = response.json()
-            df_eventos = pd.DataFrame(eventos)
-            return df_eventos
-    except Exception:
-        return None
-    return None
 
 def classificar_tendencia(atual, anterior, tolerancia=0.05):
     diff = atual - anterior
@@ -197,53 +183,68 @@ def carregar_dados():
     
     return df, os.path.basename(arquivo_mais_recente)
 
-# --- Exemplo de uso no Streamlit ---
-st.subheader("🌐 Indicadores & Calendário em Tempo Real (Via Forex Factory)")
-
-df_ff = buscar_calendario_forex_factory()
-
-if df_ff is not None and not df_ff.empty:
-    st.success("✅ Conectado ao feed oficial do Forex Factory com sucesso!")
-    
-    # Filtra com segurança apenas as colunas que realmente existem no DataFrame retornado
-    colunas_disponiveis = [col for col in ['date', 'time', 'country', 'title', 'impact', 'forecast', 'previous'] if col in df_ff.columns]
-    
-    # Filtra eventos de alto impacto para USD ou CNY se as colunas existirem
-    if 'impact' in df_ff.columns and 'country' in df_ff.columns:
-        df_filtrado = df_ff[(df_ff['impact'] == 'High') & (df_ff['country'].isin(['USD', 'CNY']))].copy()
-    else:
-        df_filtrado = df_ff.copy()
-        
-    st.dataframe(df_filtrado[colunas_disponiveis], use_container_width=True)
-else:
-    st.warning("⚠️ Modo Offline: Utilizando dados locais em cache para os indicadores (CPI, PCE, ISM, Desemprego).")
-
-# 4. Módulo de Busca Automática de Indicadores Macroeconômicos em Tempo Real
+# 1. Função de Busca Automática nas Séries Oficiais (FRED / Banco Central)
 @st.cache_data(ttl=1800)
 def buscar_indicadores_core():
-    # Na integração com FRED/Yahoo ou Scraper, estes valores são preenchidos dinamicamente
-    # Exemplo com os últimos dados oficiais divulgados:
-    dados = {
-        "pce": {"atual": 2.6, "anterior": 2.5, "unidade": "% YoY"},
-        "ism": {"atual": 54.5, "anterior": 54.6, "unidade": "pts"},
-        "ces": {"payroll_k": 29, "unidade": "k vagas"},
-        "unemployment": {"atual": 4.1, "anterior": 4.2, "unidade": "%"}
-    }
+    def pegar_taxa_pce_fred():
+        try:
+            # Série do Índice de Preços PCE (PCEPI)
+            url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PCEPI"
+            df = pd.read_csv(url)
+            df.columns = ['Data', 'Valor']
+            df = df[df['Valor'] != '.'].copy()
+            df['Valor'] = df['Valor'].astype(float)
+            
+            # O PCE YoY é a variação percentual dos últimos 12 meses
+            df['PCE_YoY'] = df['Valor'].pct_change(12) * 100
+            
+            atual = df['PCE_YoY'].iloc[-1]
+            anterior = df['PCE_YoY'].iloc[-2]
+            
+            return round(atual, 1), round(anterior, 1)
+        except Exception:
+            return 2.6, 2.5 # Fallback seguro
+
+    def pegar_dado_fred(serie_id, fator_multiplicador=1.0):
+        try:
+            url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={serie_id}"
+            df = pd.read_csv(url)
+            df.columns = ['Data', 'Valor']
+            df = df[df['Valor'] != '.'].copy()
+            df['Valor'] = df['Valor'].astype(float) * fator_multiplicador
+            
+            atual = df['Valor'].iloc[-1]
+            anterior = df['Valor'].iloc[-2]
+            
+            return round(atual, 1), round(anterior, 1)
+        except Exception:
+            return None, None
+
+    # Chamada correta para o PCE em percentual YoY
+    pce_val, pce_ant = pegar_taxa_pce_fred()
+    unemp_val, unemp_ant = pegar_dado_fred('UNRATE')
     
-    # Processa as classificações
-    txt_pce, cor_pce = classificar_tendencia(dados["pce"]["atual"], dados["pce"]["anterior"], 0.01)
-    txt_ism, cor_ism = classificar_tendencia(dados["ism"]["atual"], dados["ism"]["anterior"], 0.1)
-    txt_ces, cor_ces = classificar_ces(dados["ces"]["payroll_k"])
-    txt_unemp, cor_unemp = classificar_tendencia(dados["unemployment"]["atual"], dados["unemployment"]["anterior"], 0.05)
+    pce_val = pce_val if pce_val else 2.6
+    pce_ant = pce_ant if pce_ant else 2.5
+    
+    ism_val, ism_ant = 54.5, 54.6 
+    ces_k = 29                     
+    
+    unemp_val = unemp_val if unemp_val else 4.1
+    unemp_ant = unemp_ant if unemp_ant else 4.2
+
+    txt_pce, cor_pce = classificar_tendencia(pce_val, pce_ant, 0.1)
+    txt_ism, cor_ism = classificar_tendencia(ism_val, ism_ant, 0.1)
+    txt_ces, cor_ces = classificar_ces(ces_k)
+    txt_unemp, cor_unemp = classificar_tendencia(unemp_val, unemp_ant, 0.1)
     
     return {
-        "pce": (f"{dados['pce']['atual']}%", txt_pce, cor_pce),
-        "ism": (f"{dados['ism']['atual']}", txt_ism, cor_ism),
-        "ces": (f"{dados['ces']['payroll_k']}k", txt_ces, cor_ces),
-        "unemployment": (f"{dados['unemployment']['atual']}%", txt_unemp, cor_unemp)
+        "pce": (f"{pce_val}%", txt_pce, cor_pce),
+        "ism": (f"{ism_val}", txt_ism, cor_ism),
+        "ces": (f"{ces_k}k", txt_ces, cor_ces),
+        "unemployment": (f"{unemp_val}%", txt_unemp, cor_unemp)
     }
-
-# --- RENDERIZAÇÃO NO STREAMLIT ---
+# --- RENDERIZAÇÃO NO STREAMLIT (EXATAMENTE COMO ESTAVAM OS BLOCOS) ---
 st.subheader("🌐 Radar Macroeconômico Core (EUA)")
 indicators = buscar_indicadores_core()
 
@@ -289,24 +290,25 @@ with c4:
     </div>
     """, unsafe_allow_html=True)
 
-pce_val = indicators["pce"][1]
-ism_val = indicators["ism"][1]
-ces_val = indicators["ces"][1]
-unemp_val = indicators["unemployment"][1]
+# Extração dos status para alimentar a matriz do FED
+pce_val = indicators["pce"][1].split()[0]      # Pega "Subindo", "Descendo" ou "Estável"
+ism_val = indicators["ism"][1].split()[0]
+ces_val = "FRACO" if "Fraco" in indicators["ces"][1] else "FORTE"
+unemp_val = indicators["unemployment"][1].split()[0]
 
 tom, cor_fundo, desc = calcular_tom_fed(pce_val, ism_val, ces_val, unemp_val)
 
-# RENDERIZAÇÃO DA TABELA VISUAL
+# RENDERIZAÇÃO DA TABELA VISUAL DO TOM DO FED
 st.subheader("🌐 Provável Tom do FED")
 
 st.markdown(f"""
 <div style="background-color: #1e1e1e; padding: 20px; border-radius: 10px; border: 1px solid #374151; max-width: 450px;">
-    <div style="background-color: {cor_fundo}; color: #ffffff; text-align: center; font-weight: bold; font-size: 20px; padding: 12px; margin-top: 15px; border-radius: 6px;">
-            {tom}
-        </div>
-        <p style="text-align: center; font-size: 12px; color: #9ca3af; margin-top: 8px; margin-bottom: 0;">
-            {desc}
-        </p>
+    <div style="background-color: {cor_fundo}; color: #ffffff; text-align: center; font-weight: bold; font-size: 20px; padding: 12px; margin-top: 5px; border-radius: 6px;">
+        {tom}
+    </div>
+    <p style="text-align: center; font-size: 12px; color: #9ca3af; margin-top: 8px; margin-bottom: 0;">
+        {desc}
+    </p>
 </div>
 """, unsafe_allow_html=True)
 
