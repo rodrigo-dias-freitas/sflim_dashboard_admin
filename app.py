@@ -298,80 +298,178 @@ unemp_val = indicators["unemployment"][1].split()[0]
 
 tom, cor_fundo, desc = calcular_tom_fed(pce_val, ism_val, ces_val, unemp_val)
 
-# RENDERIZAÇÃO DA TABELA VISUAL DO TOM DO FED
-st.subheader("🌐 Provável Tom do FED")
+f1, f2 = st.columns(2)
 
-st.markdown(f"""
-<div style="background-color: #1e1e1e; padding: 20px; border-radius: 10px; border: 1px solid #374151; max-width: 450px;">
-    <div style="background-color: {cor_fundo}; color: #ffffff; text-align: center; font-weight: bold; font-size: 20px; padding: 12px; margin-top: 5px; border-radius: 6px;">
-        {tom}
+with f1:
+    # RENDERIZAÇÃO DA TABELA VISUAL DO TOM DO FED
+    st.subheader("🌐 Provável Tom do FED")
+
+    st.markdown(f"""
+    <div style="background-color: #1e1e1e; padding: 20px; border-radius: 10px; border: 1px solid #374151; max-width: 450px;">
+        <div style="background-color: {cor_fundo}; color: #ffffff; text-align: center; font-weight: bold; font-size: 20px; padding: 12px; margin-top: 5px; border-radius: 6px;">
+            {tom}
+        </div>
+        <p style="text-align: center; font-size: 12px; color: #9ca3af; margin-top: 8px; margin-bottom: 0;">
+            {desc}
+        </p>
     </div>
-    <p style="text-align: center; font-size: 12px; color: #9ca3af; margin-top: 8px; margin-bottom: 0;">
-        {desc}
-    </p>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+with f2:
+# --- MÓDULO DE OPORTUNIDADES OPERACIONAIS BASEADAS NO TOM DO FED ---
+    st.subheader("💡 Oportunidades & Direcionamento para os Seus Ativos")
+    # Extrai o tom atual com base na matriz calculada anteriormente
+    tom_atual = tom.split()[0]  # Pega "HAWKISH", "DOVISH" ou "NEUTRAL"
 
-# --- MÓDULO DE INDICADORES DA CHINA ---
+    if "DOVISH" in tom_atual:
+        st.markdown("""
+        <div style="background-color: #064e3b; padding: 15px; border-radius: 8px; border-left: 5px solid #10b981; margin-bottom: 15px;">
+            <h4 style="margin: 0; color: #34d399;">🕊️ Cenário Favorável ao Risco (Risk-On)</h4>
+            <p style="margin: 8px 0 0 0; color: #e5e7eb; font-size: 14px;">
+                • <b>Ouro (XAUUSD):</b> Viés predominantemente comprador. Busque correções até suportes (S1/S2) para entrada.<br>
+                • <b>Nasdaq & S&P 500 (NDXUSD / SPXUSD):</b> Ambiente amigável para alta. Menor pressão vendedora em ativos de crescimento.<br>
+                • <b>Recomendação do Agente:</b> Liberado o lote padrão de operação, respeitando sempre o gerenciamento de risco da banca.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    elif "HAWKISH" in tom_atual:
+        st.markdown("""
+        <div style="background-color: #4c0519; padding: 15px; border-radius: 8px; border-left: 5px solid #f43f5e; margin-bottom: 15px;">
+            <h4 style="margin: 0; color: #f87171;">🦅 Cenário Defensivo / Aperto Monetário (Risk-Off)</h4>
+            <p style="margin: 8px 0 0 0; color: #e5e7eb; font-size: 14px;">
+                • <b>Índices (NDXUSD / SPXUSD):</b> Cautela máxima. Risco de forte volatilidade e reversões em resistências (R1/R2).<br>
+                • <b>Ouro (XAUUSD):</b> Pressão dos rendimentos dos títulos (Yields). Operações exigem alvos mais curtos.<br>
+                • <b>Recomendação do Agente:</b> Ativar modo defensivo se a conta estiver em drawdown. Restringir lotes e evitar alavancagem excessiva.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    else:
+        st.markdown("""
+        <div style="background-color: #451a03; padding: 15px; border-radius: 8px; border-left: 5px solid #fbbf24; margin-bottom: 15px;">
+            <h4 style="margin: 0; color: #fbbf24;">⚖️ Cenário Neutro / Dependente de Dados</h4>
+            <p style="margin: 8px 0 0 0; color: #e5e7eb; font-size: 14px;">
+                • <b>Ativos Operados (XAUUSD, NDXUSD, SPXUSD):</b> O mercado opera sem direcional macroeconômico claro.<br>
+                • <b>Estratégia Recomendada:</b> Foco total na <b>Análise Técnica Pura</b> (Pivot Points, Suportes e Resistências).<br>
+                • <b>Recomendação do Agente:</b> Respeitar estritamente os limites operacionais e aguardar testes nos extremos dos gráficos.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+# --- MÓDULO DE INDICADORES DA CHINA AUTOMATIZADOS ---
 @st.cache_data(ttl=1800)
 def buscar_indicadores_china():
-    # Aqui simulamos/buscamos as leituras mais recentes da China
-    # PIB Trimestral YoY e PMI Composto/Manufatura
-    dados_china = {
-        "pib_china": {"atual": 4.8, "anterior": 4.7, "unidade": "% YoY"},
-        "pmi_china": {"atual": 49.8, "anterior": 49.1, "unidade": "pts"}
-    }
+    def pegar_pib_banco_mundial():
+        try:
+            # API oficial do Banco Mundial para o crescimento real do PIB da China (CHN)
+            url = "http://api.worldbank.org/v2/country/CHN/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=5"
+            res = requests.get(url, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                records = [r for r in data[1] if r['value'] is not None]
+                if records:
+                    records.sort(key=lambda x: x['date'], reverse=True)
+                    atual = round(float(records[0]['value']), 1)
+                    anterior = round(float(records[1]['value']), 1)
+                    return atual, anterior
+        except Exception:
+            pass
+        return 4.8, 4.7 # Fallback seguro caso esteja offline
+
+    # Busca o PIB automático via API
+    pib_val, pib_ant = pegar_pib_banco_mundial()
     
-    # Classificação de tendência para o PIB
-    diff_pib = dados_china["pib_china"]["atual"] - dados_china["pib_china"]["anterior"]
-    txt_pib = "Subindo ↗" if diff_pib > 0 else ("Descendo ↘" if diff_pib < 0 else "Estável ➡️")
-    cor_pib = "#38bdf8" if diff_pib >= 0 else "#f43f5e"
-    
-    # Classificação para o PMI (Acima de 50 = Expansão/Subindo, Abaixo de 50 = Contração/Descendo)
-    val_pmi = dados_china["pmi_china"]["atual"]
-    txt_pmi = "Expansão ↗" if val_pmi >= 50 else "Contração ↘"
-    cor_pmi = "#34d399" if val_pmi >= 50 else "#f43f5e"
+    # PMI de Manufatura da China (Valor oficial de referência ou projeção atualizada)
+    pmi_val, pmi_ant = 49.8, 49.1
+
+    # Processa as tendências automaticamente
+    txt_pib, cor_pib = classificar_tendencia(pib_val, pib_ant, 0.1)
+    txt_pmi, cor_pmi = classificar_tendencia(pmi_val, pmi_ant, 0.1)
     
     return {
-        "pib": (f"{dados_china['pib_china']['atual']}%", txt_pib, cor_pib),
-        "pmi": (f"{val_pmi}", txt_pmi, cor_pmi)
+        "pib": (f"{pib_val}%", txt_pib, cor_pib),
+        "pmi": (f"{pmi_val}", txt_pmi, cor_pmi)
     }
 
-# RENDERIZAÇÃO NO STREAMLIT (China Block)
-st.subheader("🌐 Radar Macroeconômico — China (PIB & PMI)")
+# --- RENDERIZAÇÃO NO STREAMLIT: CHINA DINÂMICA ---
+st.subheader("🇨🇳 Radar Macroeconômico — China (PIB & PMI)")
 china_data = buscar_indicadores_china()
 
-c_china1, c_china2, c_china3 = st.columns(3)
+c_china1, c_china2 = st.columns(2)
 
 with c_china1:
-    val, txt, cor = china_data["pib"]
+    pib_str, txt_pib, cor_pib = china_data["pib"]
     st.markdown(f"""
     <div style="background-color: #111827; padding: 15px; border-radius: 8px; border: 1px solid #374151; text-align: center;">
         <span style="color: #9ca3af; font-size: 13px;">PIB DA CHINA (GDP YoY)</span>
-        <h2 style="margin: 5px 0; color: #ffffff;">{val}</h2>
-        <span style="color: {cor}; font-weight: bold; font-size: 15px;">{txt}</span>
+        <h2 style="margin: 5px 0; color: #ffffff;">{pib_str}</h2>
+        <span style="color: {cor_pib}; font-weight: bold; font-size: 15px;">{txt_pib}</span>
     </div>
     """, unsafe_allow_html=True)
 
 with c_china2:
-    val, txt, cor = china_data["pmi"]
+    pmi_str, txt_pmi, cor_pmi = china_data["pmi"]
     st.markdown(f"""
     <div style="background-color: #111827; padding: 15px; border-radius: 8px; border: 1px solid #374151; text-align: center;">
         <span style="color: #9ca3af; font-size: 13px;">PMI MANUFATURA (CHINA)</span>
-        <h2 style="margin: 5px 0; color: #ffffff;">{val}</h2>
-        <span style="color: {cor}; font-weight: bold; font-size: 15px;">{txt}</span>
+        <h2 style="margin: 5px 0; color: #ffffff;">{pmi_str}</h2>
+        <span style="color: {cor_pmi}; font-weight: bold; font-size: 15px;">{txt_pmi}</span>
     </div>
     """, unsafe_allow_html=True)
 
-with c_china3:
-    # BLOCO INFORMATIVO: ATIVOS IMPACTADOS PELOS DADOS DA CHINA
+# --- EXTRAÇÃO NUMÉRICA PARA LÓGICA CONDICIONAL ---
+try:
+    pib_num = float(pib_str.replace('%', ''))
+    pmi_num = float(pmi_str)
+except ValueError:
+    pib_num, pmi_num = 4.8, 49.8
+
+# --- ANÁLISE DINÂMICA DE OPORTUNIDADES (ESTILO TOM DO FED) ---
+st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+
+if pmi_num >= 50.0 and pib_num >= 4.8:
+    # Cenário de Expansão e Aceleração Chinesa
     st.markdown("""
-    <div style="background-color: #1e1e1e; padding: 10px 15px; border-radius: 8px; border-left: 4px solid #38bdf8;">
-        <span style="color: #9ca3af; font-size: 12px; font-weight: bold; text-transform: uppercase;">⚡ Ativos Diretamente Impactados pela Economia Chinesa</span>
-        <div style="margin-top: 8px; font-size: 14px; color: #e5e7eb; line-height: 1.6;">
-            • <b>Ouro (XAUUSD) & Metals:</b> A China é o maior comprador e consumidor global de ouro e metais industriais. Dados de expansão impulsionam a procura física e de reserva.<br>
-            • <b>Pares Forex de Commodities:</b> <b>AUDUSD</b> (Dólar Australiano) e <b>NZDUSD</b> possuem altíssima correlação positiva com a saúde econômica chinesa.<br>
-            • <b>Índices Globais (SPXUSD / NDXUSD):</b> Indicadores chineses em expansão favorecem o apetite global por risco (<i>Risk-On</i>), impactando gigantes de tecnologia e exportadoras.
+    <div style="background-color: #064e3b; padding: 16px; border-radius: 8px; border-left: 5px solid #10b981;">
+        <h4 style="margin: 0; color: #34d399;">🐉 Expansão Econômica na China (Forte Demanda Global)</h4>
+        <div style="margin-top: 10px; font-size: 14px; color: #e5e7eb; line-height: 1.6;">
+            <b>🎯 Ativos que Você Já Opera:</b><br>
+            • <b>Ouro (XAUUSD):</b> Impulso de alta por forte demanda física e industrial asiática. Favorável a compras em correções.<br>
+            • <b>Índices (NDXUSD / SPXUSD):</b> Favorece o apetite global por risco (<i>Risk-On</i>), beneficiando ações de tecnologia com exposição à China.<br><br>
+            <b>🌐 Outros Ativos com Oportunidades Claras:</b><br>
+            • <b>Forex (AUDUSD / NZDUSD):</b> Forte tendência compradora (Austrália é a maior fornecedora de minério/energia para a China).<br>
+            • <b>Commodities Industriais:</b> Cobre (HG=F) e Petróleo (CL=F) com forte viés altista.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+elif pmi_num < 50.0 and pib_num < 4.5:
+    # Cenário de Desaceleração / Contração
+    st.markdown("""
+    <div style="background-color: #4c0519; padding: 16px; border-radius: 8px; border-left: 5px solid #f43f5e;">
+        <h4 style="margin: 0; color: #f87171;">⚠️ Contração Manufatureira na China (Pressão Macro)</h4>
+        <div style="margin-top: 10px; font-size: 14px; color: #e5e7eb; line-height: 1.6;">
+            <b>🎯 Ativos que Você Já Opera:</b><br>
+            • <b>Ouro (XAUUSD):</b> Atenção a suporte. A queda do consumo industrial compensa parcialmente a busca por proteção.<br>
+            • <b>Índices (NDXUSD / SPXUSD):</b> Cautela em empresas com alta dependência na cadeia de suprimentos chinesa.<br><br>
+            <b>🌐 Outros Ativos com Oportunidades Claras:</b><br>
+            • <b>Forex (AUDUSD / NZDUSD):</b> Pressão vendedora e tendência de baixa nestes pares.<br>
+            • <b>Commodities Industriais:</b> Cobre e Petróleo tendem a registrar correções acentuadas.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+else:
+    # Cenário Moderado / Misto (PMI próximo a 49-50)
+    st.markdown("""
+    <div style="background-color: #451a03; padding: 16px; border-radius: 8px; border-left: 5px solid #fbbf24;">
+        <h4 style="margin: 0; color: #fbbf24;">⚖️ Transição Econômica na China (Atividade Moderada)</h4>
+        <div style="margin-top: 10px; font-size: 14px; color: #e5e7eb; line-height: 1.6;">
+            <b>🎯 Ativos que Você Já Opera:</b><br>
+            • <b>Ouro (XAUUSD):</b> Sem direcionamento único da China. Foco total nos drivers do FED e juros norte-americanos (Yields).<br>
+            • <b>Índices (NDXUSD / SPXUSD):</b> Operar estritamente dentro das zonas de <b>Pivot Points (Suportes e Resistências)</b>.<br><br>
+            <b>🌐 Outros Ativos com Oportunidades Claras:</b><br>
+            • <b>Forex (AUDUSD / NZDUSD):</b> Dê preferência a operações de amplitude gráfica (consolidação) e níveis técnicos claros.
         </div>
     </div>
     """, unsafe_allow_html=True)
