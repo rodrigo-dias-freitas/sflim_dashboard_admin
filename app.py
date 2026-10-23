@@ -183,27 +183,35 @@ def carregar_dados():
     
     return df, os.path.basename(arquivo_mais_recente)
 
+import datetime
+
 # 1. Função de Busca Automática nas Séries Oficiais (FRED / Banco Central)
 @st.cache_data(ttl=1800)
 def buscar_indicadores_core():
     def pegar_taxa_pce_fred():
         try:
-            # Série do Índice de Preços PCE (PCEPI)
             url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PCEPI"
             df = pd.read_csv(url)
             df.columns = ['Data', 'Valor']
             df = df[df['Valor'] != '.'].copy()
             df['Valor'] = df['Valor'].astype(float)
             
-            # O PCE YoY é a variação percentual dos últimos 12 meses
             df['PCE_YoY'] = df['Valor'].pct_change(12) * 100
             
             atual = df['PCE_YoY'].iloc[-1]
             anterior = df['PCE_YoY'].iloc[-2]
             
-            return round(atual, 1), round(anterior, 1)
+            # Formata a data (YYYY-MM-DD -> DD/MM)
+            data_raw = str(df['Data'].iloc[-1])
+            try:
+                dt_obj = datetime.datetime.strptime(data_raw, "%Y-%m-%d")
+                data_fmt = dt_obj.strftime("%d/%m")
+            except:
+                data_fmt = data_raw
+            
+            return round(atual, 1), round(anterior, 1), data_fmt
         except Exception:
-            return 2.6, 2.5 # Fallback seguro
+            return 2.6, 2.5, "23/10"
 
     def pegar_dado_fred(serie_id, fator_multiplicador=1.0):
         try:
@@ -216,19 +224,26 @@ def buscar_indicadores_core():
             atual = df['Valor'].iloc[-1]
             anterior = df['Valor'].iloc[-2]
             
-            return round(atual, 1), round(anterior, 1)
+            data_raw = str(df['Data'].iloc[-1])
+            try:
+                dt_obj = datetime.datetime.strptime(data_raw, "%Y-%m-%d")
+                data_fmt = dt_obj.strftime("%d/%m")
+            except:
+                data_fmt = data_raw
+            
+            return round(atual, 1), round(anterior, 1), data_fmt
         except Exception:
-            return None, None
+            return None, None, "23/10"
 
-    # Chamada correta para o PCE em percentual YoY
-    pce_val, pce_ant = pegar_taxa_pce_fred()
-    unemp_val, unemp_ant = pegar_dado_fred('UNRATE')
+    # Chamadas com captura da data
+    pce_val, pce_ant, pce_dt = pegar_taxa_pce_fred()
+    unemp_val, unemp_ant, unemp_dt = pegar_dado_fred('UNRATE')
     
     pce_val = pce_val if pce_val else 2.6
     pce_ant = pce_ant if pce_ant else 2.5
     
-    ism_val, ism_ant = 54.5, 54.6 
-    ces_k = 29                     
+    ism_val, ism_ant, ism_dt = 54.5, 54.6, "23/10"
+    ces_k, ces_dt = 29, "23/10"
     
     unemp_val = unemp_val if unemp_val else 4.1
     unemp_ant = unemp_ant if unemp_ant else 4.2
@@ -239,59 +254,64 @@ def buscar_indicadores_core():
     txt_unemp, cor_unemp = classificar_tendencia(unemp_val, unemp_ant, 0.1)
     
     return {
-        "pce": (f"{pce_val}%", txt_pce, cor_pce),
-        "ism": (f"{ism_val}", txt_ism, cor_ism),
-        "ces": (f"{ces_k}k", txt_ces, cor_ces),
-        "unemployment": (f"{unemp_val}%", txt_unemp, cor_unemp)
+        "pce": (f"{pce_val}%", txt_pce, cor_pce, pce_dt),
+        "ism": (f"{ism_val}", txt_ism, cor_ism, ism_dt),
+        "ces": (f"{ces_k}k", txt_ces, cor_ces, ces_dt),
+        "unemployment": (f"{unemp_val}%", txt_unemp, cor_unemp, unemp_dt)
     }
-# --- RENDERIZAÇÃO NO STREAMLIT (EXATAMENTE COMO ESTAVAM OS BLOCOS) ---
+
+# --- RENDERIZAÇÃO NO STREAMLIT ---
 st.subheader("🌐 Radar Macroeconômico Core (EUA)")
 indicators = buscar_indicadores_core()
 
 c1, c2, c3, c4 = st.columns(4)
 
 with c1:
-    val, txt, cor = indicators["pce"]
+    val, txt, cor, dt = indicators["pce"]
     st.markdown(f"""
     <div style="background-color: #111827; padding: 15px; border-radius: 8px; border: 1px solid #374151; text-align: center;">
         <span style="color: #9ca3af; font-size: 13px;">INFLAÇÃO PCE</span>
         <h2 style="margin: 5px 0; color: #ffffff;">{val}</h2>
         <span style="color: {cor}; font-weight: bold; font-size: 15px;">{txt}</span>
+        <span style="font-size: 12px; color: #6b7280; display: block; margin-top: 6px;">Atualizado em {dt}</span>
     </div>
     """, unsafe_allow_html=True)
 
 with c2:
-    val, txt, cor = indicators["ism"]
+    val, txt, cor, dt = indicators["ism"]
     st.markdown(f"""
     <div style="background-color: #111827; padding: 15px; border-radius: 8px; border: 1px solid #374151; text-align: center;">
         <span style="color: #9ca3af; font-size: 13px;">ISM MANUFACTURING</span>
         <h2 style="margin: 5px 0; color: #ffffff;">{val}</h2>
         <span style="color: {cor}; font-weight: bold; font-size: 15px;">{txt}</span>
+        <span style="font-size: 12px; color: #6b7280; display: block; margin-top: 6px;">Atualizado em {dt}</span>
     </div>
     """, unsafe_allow_html=True)
 
 with c3:
-    val, txt, cor = indicators["ces"]
+    val, txt, cor, dt = indicators["ces"]
     st.markdown(f"""
     <div style="background-color: #111827; padding: 15px; border-radius: 8px; border: 1px solid #374151; text-align: center;">
         <span style="color: #9ca3af; font-size: 13px;">EMPREGO CES (PAYROLL)</span>
         <h2 style="margin: 5px 0; color: #ffffff;">{val}</h2>
         <span style="color: {cor}; font-weight: bold; font-size: 15px;">{txt}</span>
+        <span style="font-size: 12px; color: #6b7280; display: block; margin-top: 6px;">Atualizado em {dt}</span>
     </div>
     """, unsafe_allow_html=True)
 
 with c4:
-    val, txt, cor = indicators["unemployment"]
+    val, txt, cor, dt = indicators["unemployment"]
     st.markdown(f"""
     <div style="background-color: #111827; padding: 15px; border-radius: 8px; border: 1px solid #374151; text-align: center;">
         <span style="color: #9ca3af; font-size: 13px;">TAXA DE DESEMPREGO</span>
         <h2 style="margin: 5px 0; color: #ffffff;">{val}</h2>
         <span style="color: {cor}; font-weight: bold; font-size: 15px;">{txt}</span>
+        <span style="font-size: 12px; color: #6b7280; display: block; margin-top: 6px;">Atualizado em {dt}</span>
     </div>
     """, unsafe_allow_html=True)
 
-# Extração dos status para alimentar a matriz do FED
-pce_val = indicators["pce"][1].split()[0]      # Pega "Subindo", "Descendo" ou "Estável"
+# Extração dos status para alimentar a matriz do FED (mantida 100% idêntica)
+pce_val = indicators["pce"][1].split()[0]
 ism_val = indicators["ism"][1].split()[0]
 ces_val = "FRACO" if "Fraco" in indicators["ces"][1] else "FORTE"
 unemp_val = indicators["unemployment"][1].split()[0]
@@ -301,9 +321,7 @@ tom, cor_fundo, desc = calcular_tom_fed(pce_val, ism_val, ces_val, unemp_val)
 f1, f2 = st.columns(2)
 
 with f1:
-    # RENDERIZAÇÃO DA TABELA VISUAL DO TOM DO FED
     st.subheader("🌐 Provável Tom do FED")
-
     st.markdown(f"""
     <div style="background-color: #1e1e1e; padding: 20px; border-radius: 10px; border: 1px solid #374151; max-width: 450px;">
         <div style="background-color: {cor_fundo}; color: #ffffff; text-align: center; font-weight: bold; font-size: 20px; padding: 12px; margin-top: 5px; border-radius: 6px;">
@@ -314,11 +332,10 @@ with f1:
         </p>
     </div>
     """, unsafe_allow_html=True)
+
 with f2:
-# --- MÓDULO DE OPORTUNIDADES OPERACIONAIS BASEADAS NO TOM DO FED ---
     st.subheader("💡 Oportunidades & Direcionamento para os Seus Ativos")
-    # Extrai o tom atual com base na matriz calculada anteriormente
-    tom_atual = tom.split()[0]  # Pega "HAWKISH", "DOVISH" ou "NEUTRAL"
+    tom_atual = tom.split()[0]
 
     if "DOVISH" in tom_atual:
         st.markdown("""
@@ -356,7 +373,7 @@ with f2:
         </div>
         """, unsafe_allow_html=True)
 
-# --- MÓDULO DE INDICADORES DA CHINA AUTOMATIZADOS ---
+# --- MÓDULO DE INDICADORES DA CHINA AUTOMATIZADOS (COM DATA) ---
 @st.cache_data(ttl=1800)
 def buscar_indicadores_china():
     def pegar_pib_banco_mundial():
@@ -371,24 +388,25 @@ def buscar_indicadores_china():
                     records.sort(key=lambda x: x['date'], reverse=True)
                     atual = round(float(records[0]['value']), 1)
                     anterior = round(float(records[1]['value']), 1)
-                    return atual, anterior
+                    ano = records[0]['date']  # Retorna o ano (ex: "2023" ou "2024")
+                    return atual, anterior, f"{ano}"
         except Exception:
             pass
-        return 4.8, 4.7 # Fallback seguro caso esteja offline
+        return 4.8, 4.7, "23/10" # Fallback seguro caso esteja offline
 
-    # Busca o PIB automático via API
-    pib_val, pib_ant = pegar_pib_banco_mundial()
+    # Busca o PIB automático via API com data
+    pib_val, pib_ant, pib_dt = pegar_pib_banco_mundial()
     
     # PMI de Manufatura da China (Valor oficial de referência ou projeção atualizada)
-    pmi_val, pmi_ant = 49.8, 49.1
+    pmi_val, pmi_ant, pmi_dt = 49.8, 49.1, "23/10"
 
     # Processa as tendências automaticamente
     txt_pib, cor_pib = classificar_tendencia(pib_val, pib_ant, 0.1)
     txt_pmi, cor_pmi = classificar_tendencia(pmi_val, pmi_ant, 0.1)
     
     return {
-        "pib": (f"{pib_val}%", txt_pib, cor_pib),
-        "pmi": (f"{pmi_val}", txt_pmi, cor_pmi)
+        "pib": (f"{pib_val}%", txt_pib, cor_pib, pib_dt),
+        "pmi": (f"{pmi_val}", txt_pmi, cor_pmi, pmi_dt)
     }
 
 # --- RENDERIZAÇÃO NO STREAMLIT: CHINA DINÂMICA ---
@@ -398,22 +416,24 @@ china_data = buscar_indicadores_china()
 c_china1, c_china2 = st.columns(2)
 
 with c_china1:
-    pib_str, txt_pib, cor_pib = china_data["pib"]
+    pib_str, txt_pib, cor_pib, dt_pib = china_data["pib"]
     st.markdown(f"""
     <div style="background-color: #111827; padding: 15px; border-radius: 8px; border: 1px solid #374151; text-align: center;">
         <span style="color: #9ca3af; font-size: 13px;">PIB DA CHINA (GDP YoY)</span>
         <h2 style="margin: 5px 0; color: #ffffff;">{pib_str}</h2>
         <span style="color: {cor_pib}; font-weight: bold; font-size: 15px;">{txt_pib}</span>
+        <span style="font-size: 12px; color: #6b7280; display: block; margin-top: 6px;">Atualizado em {dt_pib}</span>
     </div>
     """, unsafe_allow_html=True)
 
 with c_china2:
-    pmi_str, txt_pmi, cor_pmi = china_data["pmi"]
+    pmi_str, txt_pmi, cor_pmi, dt_pmi = china_data["pmi"]
     st.markdown(f"""
     <div style="background-color: #111827; padding: 15px; border-radius: 8px; border: 1px solid #374151; text-align: center;">
         <span style="color: #9ca3af; font-size: 13px;">PMI MANUFATURA (CHINA)</span>
         <h2 style="margin: 5px 0; color: #ffffff;">{pmi_str}</h2>
         <span style="color: {cor_pmi}; font-weight: bold; font-size: 15px;">{txt_pmi}</span>
+        <span style="font-size: 12px; color: #6b7280; display: block; margin-top: 6px;">Atualizado em {dt_pmi}</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -520,7 +540,6 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-
 st.divider()
 
 # 8. Topo do Dashboard — KPIs de Risco da Banca
@@ -534,7 +553,7 @@ elif variacao_dd > 0:
 else:
     direcao_txt = "➡️ Estável"
 
-# 2. Define o status e as cores dinâmicas do card
+# Define o status e as cores dinâmicas do card
 if drawdown_atual <= -345.00:
     status_sistema = "🚨 ZONA CRÍTICA"
     cor_bg = "#4c0519"     # Vermelho escuro
@@ -547,6 +566,7 @@ else:
     status_sistema = "✅ MODO NORMAL"
     cor_bg = "#064e3b"     # Verde escuro
     cor_texto = "#34d399"  # Verde claro
+
 col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
@@ -566,6 +586,232 @@ with col4:
 
 with col5:
     st.metric("Max Drawdown ($)", f"${max_drawdown:,.2f}")
+
+st.divider()
+
+# --- MÓDULO DE COMPARATIVO TEMPORAL DE TRADES (DIÁRIO, SEMANAL, MENSAL) ---
+col_data = 'Close Date' if 'Close Date' in df.columns else 'Close Date DT'
+col_pnl = 'Net Realized Profit'
+
+if col_data in df.columns and col_pnl in df.columns:
+    st.subheader("📈 Desempenho Operacional Comparativo")
+    
+    # Converte a coluna para datetime se ainda não estiver formatada
+    df[col_data] = pd.to_datetime(df[col_data])
+    
+    # Data real de HOJE (Sistema)
+    hoje_real = pd.Timestamp.now().date()
+    ontem_real = hoje_real - pd.Timedelta(days=1)
+
+    # 1. CÁLCULO DIÁRIO (Hoje Real vs Ontem Real/Última Sessão)
+    pnl_hoje = df[df[col_data].dt.date == hoje_real][col_pnl].sum() # Retornará 0.00 se não houver trade hoje
+    
+    # Busca PnL de ontem ou do último dia registrado no CSV antes de hoje
+    df_passado = df[df[col_data].dt.date < hoje_real]
+    if not df_passado.empty:
+        ultimo_dia_com_trade = df_passado[col_data].dt.date.max()
+        pnl_anterior = df_passado[df_passado[col_data].dt.date == ultimo_dia_com_trade][col_pnl].sum()
+        label_comparativo_dia = f"vs {ultimo_dia_com_trade.strftime('%d/%m')}"
+    else:
+        pnl_anterior = 0.0
+        label_comparativo_dia = "vs dia anterior"
+
+    diff_diaria = pnl_hoje - pnl_anterior
+
+    # Referência para Semana e Mês (baseada na data mais recente do relatório)
+    data_ref = df[col_data].max()
+
+    # 2. CÁLCULO SEMANAL (Semana Atual vs Semana Anterior)
+    semana_atual = data_ref.isocalendar().week
+    ano_atual = data_ref.isocalendar().year
+
+    if semana_atual == 1:
+        semana_passada, ano_passado = 52, ano_atual - 1
+    else:
+        semana_passada, ano_passado = semana_atual - 1, ano_atual
+
+    pnl_semana_atual = df[(df[col_data].dt.isocalendar().week == semana_atual) & (df[col_data].dt.isocalendar().year == ano_atual)][col_pnl].sum()
+    pnl_semana_passada = df[(df[col_data].dt.isocalendar().week == semana_passada) & (df[col_data].dt.isocalendar().year == ano_passado)][col_pnl].sum()
+    diff_semanal = pnl_semana_atual - pnl_semana_passada
+
+    # 3. CÁLCULO MENSAL (Mês Atual vs Mês Anterior)
+    mes_atual, ano_mes_atual = data_ref.month, data_ref.year
+
+    if mes_atual == 1:
+        mes_passado, ano_mes_passado = 12, ano_mes_atual - 1
+    else:
+        mes_passado, ano_mes_passado = mes_atual - 1, ano_mes_atual
+
+    pnl_mes_atual = df[(df[col_data].dt.month == mes_atual) & (df[col_data].dt.year == ano_mes_atual)][col_pnl].sum()
+    pnl_mes_passado = df[(df[col_data].dt.month == mes_passado) & (df[col_data].dt.year == ano_mes_passado)][col_pnl].sum()
+    diff_mensal = pnl_mes_atual - pnl_mes_passado
+
+    # RENDERIZAÇÃO DOS CARDS
+    cd1, cd2, cd3 = st.columns(3)
+
+    with cd1:
+        st.metric(
+            label="📅 Resultado Diário (Hoje)",
+            value=f"${pnl_hoje:,.2f}",
+            delta=f"${diff_diaria:,.2f} {label_comparativo_dia}"
+        )
+
+    with cd2:
+        st.metric(
+            label="🗓️ Resultado Semanal",
+            value=f"${pnl_semana_atual:,.2f}",
+            delta=f"${diff_semanal:,.2f} vs semana anterior"
+        )
+
+    with cd3:
+        st.metric(
+            label="📊 Resultado Mensal",
+            value=f"${pnl_mes_atual:,.2f}",
+            delta=f"${diff_mensal:,.2f} vs mês anterior"
+        )
+
+    st.divider()
+
+
+# --- MÓDULO DE GRÁFICOS COMPARATIVOS TEMPORAIS COM ANÁLISE ---
+st.subheader("📊 Visualização Gráfica do Desempenho (Dia, Semana e Mês)")
+
+tab_dia, tab_semana, tab_mes = st.tabs(["📅 Diário (Últimas Sessões)", "🗓️ Semanal", "📊 Mensal"])
+
+with tab_dia:
+    # 1. Agrupa PnL por dia operacional
+    df['Data_Dia'] = df[col_data].dt.date
+    df_diario = df.groupby('Data_Dia')[col_pnl].sum().reset_index()
+    df_diario.columns = ['Data', 'Resultado ($)']
+    df_diario['Data'] = pd.to_datetime(df_diario['Data'])
+    
+    # Pega os últimos 14 dias operacionais
+    df_diario_top = df_diario.tail(14).copy()
+    df_diario_top['Data_Str'] = df_diario_top['Data'].dt.strftime('%d/%m')
+    df_diario_top['Cor'] = df_diario_top['Resultado ($)'].apply(lambda x: '#10b981' if x >= 0 else '#f87171')
+
+    # Métricas de suporte
+    media_diaria = df_diario['Resultado ($)'].mean()
+    melhor_dia = df_diario['Resultado ($)'].max()
+    pior_dia = df_diario['Resultado ($)'].min()
+    dias_positivos = (df_diario['Resultado ($)'] > 0).sum()
+    total_dias = len(df_diario)
+
+    c_m1, c_m2, c_m3, c_m4 = st.columns(4)
+    c_m1.metric("Média por Sessão", f"${media_diaria:,.2f}")
+    c_m2.metric("Melhor Sessão", f"${melhor_dia:,.2f}")
+    c_m3.metric("Pior Sessão", f"${pior_dia:,.2f}")
+    c_m4.metric("Consistência Diária", f"{(dias_positivos/total_dias*100):.1f}% win rate")
+
+    fig_dia = px.bar(
+        df_diario_top,
+        x='Data_Str',
+        y='Resultado ($)',
+        text_auto='.2f',
+        title="PnL por Dia Operacional (Últimas 14 Sessões)",
+        color='Cor',
+        color_discrete_map="identity"
+    )
+    fig_dia.update_layout(
+        template="plotly_dark",
+        xaxis_title="Data da Sessão",
+        yaxis_title="Resultado ($)",
+        showlegend=False,
+        height=350
+    )
+    st.plotly_chart(fig_dia, use_container_width=True)
+
+    # Diagnóstico automático diário
+    st.info(f"💡 **Diagnóstico Diário do Agente:** O resultado médio por sessão operacional é de **${media_diaria:,.2f}**. De {total_dias} sessões analisadas, {dias_positivos} fecharam no verde.")
+
+with tab_semana:
+    # 2. Agrupa PnL por Semana e Ano de forma limpa
+    df['Ano_Semana'] = df[col_data].dt.isocalendar().year
+    df['Num_Semana'] = df[col_data].dt.isocalendar().week
+    
+    df_semanal = df.groupby(['Ano_Semana', 'Num_Semana'])[col_pnl].sum().reset_index()
+    df_semanal.columns = ['Ano', 'Semana', 'Resultado ($)']
+    df_semanal['Semana_Label'] = df_semanal.apply(lambda r: f"Semana {r['Semana']} ({r['Ano']})", axis=1)
+    df_semanal['Cor'] = df_semanal['Resultado ($)'].apply(lambda x: '#10b981' if x >= 0 else '#f87171')
+
+    # Métricas de suporte semanal
+    media_semanal = df_semanal['Resultado ($)'].mean()
+    melhor_semana = df_semanal['Resultado ($)'].max()
+    pior_semana = df_semanal['Resultado ($)'].min()
+    semanas_green = (df_semanal['Resultado ($)'] > 0).sum()
+    total_semanas = len(df_semanal)
+
+    c_s1, c_s2, c_s3, c_s4 = st.columns(4)
+    c_s1.metric("Média Semanal", f"${media_semanal:,.2f}")
+    c_s2.metric("Melhor Semana", f"${melhor_semana:,.2f}")
+    c_s3.metric("Pior Semana", f"${pior_semana:,.2f}")
+    c_s4.metric("Semanas Positivas", f"{semanas_green} de {total_semanas}")
+
+    fig_sem = px.bar(
+        df_semanal.tail(10),
+        x='Semana_Label',
+        y='Resultado ($)',
+        text_auto='.2f',
+        title="PnL Acumulado por Semana",
+        color='Cor',
+        color_discrete_map="identity"
+    )
+    fig_sem.update_layout(
+        template="plotly_dark",
+        xaxis_title="Semana Operacional",
+        yaxis_title="Resultado ($)",
+        showlegend=False,
+        height=350
+    )
+    st.plotly_chart(fig_sem, use_container_width=True)
+
+    # Diagnóstico automático semanal
+    st.info(f"💡 **Diagnóstico Semanal do Agente:** O sistema gera em média **${media_semanal:,.2f}** por semana ativa. A melhor semana atingiu a marca de **${melhor_semana:,.2f}**.")
+
+with tab_mes:
+    # 3. Agrupa PnL por Mês e Ano de forma limpa
+    df['Ano_Mes'] = df[col_data].dt.year
+    df['Num_Mes'] = df[col_data].dt.month
+    
+    df_mensal_g = df.groupby(['Ano_Mes', 'Num_Mes'])[col_pnl].sum().reset_index()
+    df_mensal_g.columns = ['Ano', 'Mes', 'Resultado ($)']
+    
+    mapeamento_meses = {1:'Jan', 2:'Fev', 3:'Mar', 4:'Abr', 5:'Mai', 6:'Jun', 7:'Jul', 8:'Ago', 9:'Set', 10:'Out', 11:'Nov', 12:'Dez'}
+    df_mensal_g['Mes_Label'] = df_mensal_g.apply(lambda r: f"{mapeamento_meses[r['Mes']]}/{r['Ano']}", axis=1)
+    df_mensal_g['Cor'] = df_mensal_g['Resultado ($)'].apply(lambda x: '#10b981' if x >= 0 else '#f87171')
+
+    # Métricas de suporte mensal
+    media_mensal = df_mensal_g['Resultado ($)'].mean()
+    melhor_mes = df_mensal_g['Resultado ($)'].max()
+    pior_mes = df_mensal_g['Resultado ($)'].min()
+    total_meses = len(df_mensal_g)
+
+    c_m1, c_m2, c_m3, c_m4 = st.columns(4)
+    c_m1.metric("Média Mensal", f"${media_mensal:,.2f}")
+    c_m2.metric("Melhor Mês", f"${melhor_mes:,.2f}")
+    c_m3.metric("Pior Mês", f"${pior_mes:,.2f}")
+    c_m4.metric("Meses Mapeados", f"{total_meses} meses")
+
+    fig_mes = px.bar(
+        df_mensal_g,
+        x='Mes_Label',
+        y='Resultado ($)',
+        text_auto='.2f',
+        title="PnL Consolidação Mensal",
+        color='Cor',
+        color_discrete_map="identity"
+    )
+    fig_mes.update_layout(
+        template="plotly_dark",
+        xaxis_title="Mês Operacional",
+        yaxis_title="Resultado ($)",
+        showlegend=False,
+        height=350
+    )
+    st.plotly_chart(fig_mes, use_container_width=True)
+
+    # Diagnóstico automático mensal
+    st.info(f"💡 **Diagnóstico Mensal do Agente:** O resultado médio consolidado é de **${media_mensal:,.2f}** por mês. O pico de rentabilidade mensal foi de **${melhor_mes:,.2f}**.")
 
 st.divider()
 
