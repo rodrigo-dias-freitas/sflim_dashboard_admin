@@ -685,7 +685,10 @@ with tab_dia:
     df_diario.columns = ['Data', 'Resultado ($)']
     df_diario['Data'] = pd.to_datetime(df_diario['Data'])
     
-    # Pega os últimos 14 dias operacionais
+    # ORDENAÇÃO CRONOLÓGICA FORÇADA POR DATA
+    df_diario = df_diario.sort_values(by='Data', ascending=True)
+    
+    # Pega os últimos 14 dias operacionais na ordem correta
     df_diario_top = df_diario.tail(14).copy()
     df_diario_top['Data_Str'] = df_diario_top['Data'].dt.strftime('%d/%m')
     df_diario_top['Cor'] = df_diario_top['Resultado ($)'].apply(lambda x: '#10b981' if x >= 0 else '#f87171')
@@ -712,12 +715,20 @@ with tab_dia:
         color='Cor',
         color_discrete_map="identity"
     )
+    
+    # AJUSTE CONTRA CORTE DE VALORES E PARA MANTER A ORDEM CRONOLÓGICA
+    fig_dia.update_traces(
+        textposition='outside', 
+        cliponaxis=False
+    )
     fig_dia.update_layout(
         template="plotly_dark",
         xaxis_title="Data da Sessão",
         yaxis_title="Resultado ($)",
         showlegend=False,
-        height=350
+        height=380,
+        margin=dict(t=50, b=40, l=40, r=40),
+        xaxis={'categoryorder': 'array', 'categoryarray': df_diario_top['Data_Str'].tolist()}
     )
     st.plotly_chart(fig_dia, use_container_width=True)
 
@@ -725,14 +736,21 @@ with tab_dia:
     st.info(f"💡 **Diagnóstico Diário do Agente:** O resultado médio por sessão operacional é de **${media_diaria:,.2f}**. De {total_dias} sessões analisadas, {dias_positivos} fecharam no verde.")
 
 with tab_semana:
-    # 2. Agrupa PnL por Semana e Ano de forma limpa
+    # 2. Agrupa PnL por Semana e Ano
     df['Ano_Semana'] = df[col_data].dt.isocalendar().year
     df['Num_Semana'] = df[col_data].dt.isocalendar().week
     
     df_semanal = df.groupby(['Ano_Semana', 'Num_Semana'])[col_pnl].sum().reset_index()
     df_semanal.columns = ['Ano', 'Semana', 'Resultado ($)']
+    
+    # ORDENAÇÃO CRONOLÓGICA FORÇADA
+    df_semanal = df_semanal.sort_values(by=['Ano', 'Semana'], ascending=True)
+    
     df_semanal['Semana_Label'] = df_semanal.apply(lambda r: f"Semana {r['Semana']} ({r['Ano']})", axis=1)
     df_semanal['Cor'] = df_semanal['Resultado ($)'].apply(lambda x: '#10b981' if x >= 0 else '#f87171')
+
+    # Pega as últimas 10 semanas na ordem correta
+    df_sem_top = df_semanal.tail(10).copy()
 
     # Métricas de suporte semanal
     media_semanal = df_semanal['Resultado ($)'].mean()
@@ -748,7 +766,7 @@ with tab_semana:
     c_s4.metric("Semanas Positivas", f"{semanas_green} de {total_semanas}")
 
     fig_sem = px.bar(
-        df_semanal.tail(10),
+        df_sem_top,
         x='Semana_Label',
         y='Resultado ($)',
         text_auto='.2f',
@@ -756,12 +774,20 @@ with tab_semana:
         color='Cor',
         color_discrete_map="identity"
     )
+    
+    fig_sem.update_traces(
+        textposition='outside', 
+        cliponaxis=False
+    )
     fig_sem.update_layout(
         template="plotly_dark",
         xaxis_title="Semana Operacional",
         yaxis_title="Resultado ($)",
         showlegend=False,
-        height=350
+        height=380,
+        margin=dict(t=50, b=40, l=40, r=40),
+        # FORÇA O EIXO X A MANTER A ORDEM DO DATAFRAME
+        xaxis={'categoryorder': 'array', 'categoryarray': df_sem_top['Semana_Label'].tolist()}
     )
     st.plotly_chart(fig_sem, use_container_width=True)
 
@@ -800,6 +826,10 @@ with tab_mes:
         title="PnL Consolidação Mensal",
         color='Cor',
         color_discrete_map="identity"
+    )
+    fig_dia.update_traces(
+        textposition='outside', 
+        cliponaxis=False
     )
     fig_mes.update_layout(
         template="plotly_dark",
@@ -843,18 +873,77 @@ with col_a2:
     </div>
     """, unsafe_allow_html=True)
 
-# Cálculo dinâmico da semana atual
 hoje = datetime.date.today()
 inicio_semana = hoje - datetime.timedelta(days=hoje.weekday())
 fim_semana = inicio_semana + datetime.timedelta(days=4)
 
+@st.cache_data(ttl=3600)  # Cache de 1 hora
+def buscar_calendario_forex_factory():
+    """Busca o feed JSON oficial do Forex Factory e filtra eventos de alto impacto em USD e EUR."""
+    url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            dados = response.json()
+            # Filtra eventos de alto impacto (High) para USD e EUR
+            moedas_interesse = ["USD", "EUR"]
+            eventos_filtrados = [
+                item for item in dados 
+                if item.get("country") in moedas_interesse and item.get("impact") == "High"
+            ]
+            return eventos_filtrados
+    except Exception as e:
+        st.error(f"Erro ao carregar Forex Factory: {e}")
+    return []
+
+# Executa a busca
+eventos_semana = buscar_calendario_forex_factory()
+
 with col_cal:
     st.subheader(f"📅 Calendário da Semana ({inicio_semana.strftime('%d/%m')} a {fim_semana.strftime('%d/%m')})")
-    st.info("""
-    • **Quarta-feira (15:00h BRT):** Decisão de Juros / FOMC  
-    • **Sexta-feira (09:30h BRT):** Non-Farm Payroll (NFP)  
-    *Diretriz:* Nas sextas com NFP/CPI, operação liberada exclusivamente das 09:30h às 11:00h BRT com lote fixo 0.06.
-    """)
+    
+    if eventos_semana:
+        st.markdown("**🚨 Eventos de Alto Impacto (USD & EUR) Detectados:**")
+        
+        tem_nfp = False
+        for ev in eventos_semana:
+            titulo = ev.get('title', '')
+            moeda = ev.get('country', '')
+            data_hora_str = ev.get('date', '') # Formato ISO do feed
+            
+            # Formatação de data/hora
+            try:
+                dt_evento = datetime.datetime.fromisoformat(data_hora_str)
+                hora_formatada = dt_evento.strftime('%d/%m (%a) às %H:%Mh')
+            except Exception:
+                hora_formatada = data_hora_str
+
+            # Exibe com bandeira/código da moeda
+            tag_moeda = "🇺🇸 USD" if moeda == "USD" else "🇪🇺 EUR"
+            st.write(f"• **{hora_formatada} [{tag_moeda}]:** {titulo}")
+
+            if moeda == "USD" and ("Payroll" in titulo or "NFP" in titulo or "Employment Situation" in titulo):
+                tem_nfp = True
+
+        st.divider()
+
+        # Diretriz dinâmica de Operação
+        if tem_nfp:
+            st.warning("""
+            **⚠️ ATENÇÃO - SEMANA DE PAYROLL (NFP):**
+            • *Diretriz:* Operação liberada exclusivamente no bloco de volatilidade (09:30h às 11:00h BRT) com **lote fixo 0.06**.
+            """)
+        else:
+            st.info("""
+            **ℹ️ DIRETRIZ SEMANAL:**
+            • *Regra Padrão:* Respeitar os gatilhos de stop diário e janelas de scalping. Sexta-feira sem NFP -> Manter modo **No-Trade** para evitar drawdown.
+            """)
+    else:
+        st.info(f"""
+        • **Semana de:** {inicio_semana.strftime('%d/%m')} a {fim_semana.strftime('%d/%m')}
+        • Não foram encontrados eventos críticos de alto impacto para USD/EUR no momento.
+        *Diretriz:* Manter plano de trade padrão.
+        """)
 
 st.divider()
 
