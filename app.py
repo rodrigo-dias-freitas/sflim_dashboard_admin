@@ -922,7 +922,7 @@ with col_cal:
             tag_moeda = "🇺🇸 USD" if moeda == "USD" else "🇪🇺 EUR"
             st.write(f"• **{hora_formatada} [{tag_moeda}]:** {titulo}")
 
-            if moeda == "USD" and ("Payroll" in titulo or "NFP" in titulo or "Employment Situation" in titulo):
+            if moeda == "USD" and any(termo in titulo for termo in ["Non-Farm", "Non-Farm Employment", "Unemployment Rate", "Average Hourly Earnings"]):
                 tem_nfp = True
 
         st.divider()
