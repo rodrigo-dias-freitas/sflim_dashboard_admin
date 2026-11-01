@@ -1,0 +1,19 @@
+{
+    "china": {
+        "pib_atual": 4.5,
+        "pib_anterior": 4.3,
+        "pmi_atual": 49.3,
+        "pmi_anterior": 50.1,
+        "data_atualizacao": "01/11"
+    },
+    "eua": {
+        "pce_atual": 3.6,
+        "pce_anterior": 3.4,
+        "ism_atual": 54.5,
+        "ism_anterior": 54.6,
+        "ces_atual": 29,
+        "unemp_atual": 4.2,
+        "unemp_anterior": 4.1,
+        "data_atualizacao": "01/11"
+    }
+}

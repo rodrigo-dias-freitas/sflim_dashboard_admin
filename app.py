@@ -7,6 +7,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import json
 
 # Opcional para busca de cotações globais
 try:
@@ -183,81 +184,62 @@ def carregar_dados():
     
     return df, os.path.basename(arquivo_mais_recente)
 
-import datetime
+def carregar_config_macro(pais="usa"):
+    """Lê os dados macroeconômicos do ficheiro JSON com feedback visual de erros."""
+    # Garante o caminho absoluto na mesma pasta do script principal
+    diretorio_atual = os.path.dirname(os.path.abspath(__file__))
+    caminho = os.path.join(diretorio_atual, "macro_config.json")
+    
+    defaults = {
+        
+    }
+    
+    if os.path.exists(caminho):
+        try:
+            with open(caminho, "r", encoding="utf-8") as f:
+                dados = json.load(f)
+                if pais in dados:
+                    return dados[pais]
+                else:
+                    st.warning(f"⚠️ A chave '{pais}' não foi encontrada no ficheiro JSON.")
+        except Exception as e:
+            # Exibe o erro exato na interface do Streamlit para sabermos se o JSON é inválido
+            st.error(f"❌ Erro de sintaxe ou leitura no 'macro_config.json': {e}")
+    else:
+        st.error(f"❌ Ficheiro 'macro_config.json' não encontrado em: {caminho}")
+            
+    return defaults.get(pais, defaults["china"])
 
 # 1. Função de Busca Automática nas Séries Oficiais (FRED / Banco Central)
 @st.cache_data(ttl=1800)
 def buscar_indicadores_core():
-    def pegar_taxa_pce_fred():
-        try:
-            url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=PCEPI"
-            df = pd.read_csv(url)
-            df.columns = ['Data', 'Valor']
-            df = df[df['Valor'] != '.'].copy()
-            df['Valor'] = df['Valor'].astype(float)
-            
-            df['PCE_YoY'] = df['Valor'].pct_change(12) * 100
-            
-            atual = df['PCE_YoY'].iloc[-1]
-            anterior = df['PCE_YoY'].iloc[-2]
-            
-            # Formata a data (YYYY-MM-DD -> DD/MM)
-            data_raw = str(df['Data'].iloc[-1])
-            try:
-                dt_obj = datetime.datetime.strptime(data_raw, "%Y-%m-%d")
-                data_fmt = dt_obj.strftime("%d/%m")
-            except:
-                data_fmt = data_raw
-            
-            return round(atual, 1), round(anterior, 1), data_fmt
-        except Exception:
-            return 2.6, 2.5, "23/10"
-
-    def pegar_dado_fred(serie_id, fator_multiplicador=1.0):
-        try:
-            url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={serie_id}"
-            df = pd.read_csv(url)
-            df.columns = ['Data', 'Valor']
-            df = df[df['Valor'] != '.'].copy()
-            df['Valor'] = df['Valor'].astype(float) * fator_multiplicador
-            
-            atual = df['Valor'].iloc[-1]
-            anterior = df['Valor'].iloc[-2]
-            
-            data_raw = str(df['Data'].iloc[-1])
-            try:
-                dt_obj = datetime.datetime.strptime(data_raw, "%Y-%m-%d")
-                data_fmt = dt_obj.strftime("%d/%m")
-            except:
-                data_fmt = data_raw
-            
-            return round(atual, 1), round(anterior, 1), data_fmt
-        except Exception:
-            return None, None, "23/10"
-
-    # Chamadas com captura da data
-    pce_val, pce_ant, pce_dt = pegar_taxa_pce_fred()
-    unemp_val, unemp_ant, unemp_dt = pegar_dado_fred('UNRATE')
+    """Lê os indicadores dos EUA diretamente do ficheiro de configuração local (JSON)."""
+    cfg = carregar_config_macro("eua")
     
-    pce_val = pce_val if pce_val else 2.6
-    pce_ant = pce_ant if pce_ant else 2.5
+    pce_val = cfg.get("pce_atual", 0)
+    pce_ant = cfg.get("pce_anterior", 0)
     
-    ism_val, ism_ant, ism_dt = 54.5, 54.6, "23/10"
-    ces_k, ces_dt = 29, "23/10"
+    ism_val = cfg.get("ism_atual", 0)
+    ism_ant = cfg.get("ism_anterior", 0)
     
-    unemp_val = unemp_val if unemp_val else 4.1
-    unemp_ant = unemp_ant if unemp_ant else 4.2
+    ces_k = cfg.get("ces_atual", 0)
+    
+    unemp_val = cfg.get("unemp_atual", 0)
+    unemp_ant = cfg.get("unemp_anterior", 0)
+    
+    data_dt = cfg.get("data_atualizacao", "30/10")
 
+    # Processa as tendências de forma consistente
     txt_pce, cor_pce = classificar_tendencia(pce_val, pce_ant, 0.1)
     txt_ism, cor_ism = classificar_tendencia(ism_val, ism_ant, 0.1)
     txt_ces, cor_ces = classificar_ces(ces_k)
     txt_unemp, cor_unemp = classificar_tendencia(unemp_val, unemp_ant, 0.1)
     
     return {
-        "pce": (f"{pce_val}%", txt_pce, cor_pce, pce_dt),
-        "ism": (f"{ism_val}", txt_ism, cor_ism, ism_dt),
-        "ces": (f"{ces_k}k", txt_ces, cor_ces, ces_dt),
-        "unemployment": (f"{unemp_val}%", txt_unemp, cor_unemp, unemp_dt)
+        "pce": (f"{pce_val}%", txt_pce, cor_pce, data_dt),
+        "ism": (f"{ism_val}", txt_ism, cor_ism, data_dt),
+        "ces": (f"{ces_k}k", txt_ces, cor_ces, data_dt),
+        "unemployment": (f"{unemp_val}%", txt_unemp, cor_unemp, data_dt)
     }
 
 # --- RENDERIZAÇÃO NO STREAMLIT ---
@@ -373,42 +355,76 @@ with f2:
         </div>
         """, unsafe_allow_html=True)
 
-# --- MÓDULO DE INDICADORES DA CHINA AUTOMATIZADOS (COM DATA) ---
-@st.cache_data(ttl=1800)
-def buscar_indicadores_china():
-    def pegar_pib_banco_mundial():
-        try:
-            # API oficial do Banco Mundial para o crescimento real do PIB da China (CHN)
-            url = "http://api.worldbank.org/v2/country/CHN/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=5"
-            res = requests.get(url, timeout=5)
-            if res.status_code == 200:
-                data = res.json()
-                records = [r for r in data[1] if r['value'] is not None]
-                if records:
-                    records.sort(key=lambda x: x['date'], reverse=True)
-                    atual = round(float(records[0]['value']), 1)
-                    anterior = round(float(records[1]['value']), 1)
-                    ano = records[0]['date']  # Retorna o ano (ex: "2023" ou "2024")
-                    return atual, anterior, f"{ano}"
-        except Exception:
-            pass
-        return 4.8, 4.7, "23/10" # Fallback seguro caso esteja offline
+st.sidebar.subheader("🔔 Radar de Divulgações")
 
-    # Busca o PIB automático via API com data
-    pib_val, pib_ant, pib_dt = pegar_pib_banco_mundial()
+hoje = datetime.date.today()
+dia_atual = hoje.day
+
+# Alerta inteligente para o PMI (final/início do mês)
+if dia_atual >= 28 or dia_atual <= 3:
+    st.sidebar.warning(
+        "🇨🇳 **PMI da China:** Janela de divulgação aberta! "
+        "Consulte o Investing/TradingEconomics e atualize o arquivo `macro_config.json`."
+    )
+else:
+    st.sidebar.info("📌 **China (PMI):** Aguardando janela no fim/início do mês.")
+
+# Alerta inteligente para o PIB (trimestral: meados de Jan, Abr, Jul, Out)
+if hoje.month in [1, 4, 7, 10] and 10 <= dia_atual <= 20:
+    st.sidebar.warning(
+        "🇨🇳 **PIB da China:** Janela trimestral aberta! "
+        "Atualize os valores no arquivo `macro_config.json`."
+    )
+
+st.sidebar.markdown("---")
+
+def carregar_config_macro(pais="china"):
+    """Lê os dados macroeconômicos do ficheiro JSON com feedback visual de erros."""
+    # Garante o caminho absoluto na mesma pasta do script principal
+    diretorio_atual = os.path.dirname(os.path.abspath(__file__))
+    caminho = os.path.join(diretorio_atual, "macro_config.json")
     
-    # PMI de Manufatura da China (Valor oficial de referência ou projeção atualizada)
-    pmi_val, pmi_ant, pmi_dt = 49.8, 49.1, "23/10"
+    defaults = {
+        
+    }
+    
+    if os.path.exists(caminho):
+        try:
+            with open(caminho, "r", encoding="utf-8") as f:
+                dados = json.load(f)
+                if pais in dados:
+                    return dados[pais]
+                else:
+                    st.warning(f"⚠️ A chave '{pais}' não foi encontrada no ficheiro JSON.")
+        except Exception as e:
+            # Exibe o erro exato na interface do Streamlit para sabermos se o JSON é inválido
+            st.error(f"❌ Erro de sintaxe ou leitura no 'macro_config.json': {e}")
+    else:
+        st.error(f"❌ Ficheiro 'macro_config.json' não encontrado em: {caminho}")
+            
+    return defaults.get(pais, defaults["china"])
 
-    # Processa as tendências automaticamente
+def buscar_indicadores_china():
+    """Alimenta o radar da China usando a nova estrutura do JSON."""
+    cfg = carregar_config_macro("china")
+    
+    # Atribuição correta das variáveis locais
+    pib_val = cfg.get("pib_atual", 4.8)
+    pib_ant = cfg.get("pib_anterior", 4.7)
+    
+    pmi_val = cfg.get("pmi_atual", 49.8)
+    pmi_ant = cfg.get("pmi_anterior", 49.1)
+    
+    data_dt = cfg.get("data_atualizacao", "30/10")
+
+    # Classificação de tendência
     txt_pib, cor_pib = classificar_tendencia(pib_val, pib_ant, 0.1)
     txt_pmi, cor_pmi = classificar_tendencia(pmi_val, pmi_ant, 0.1)
     
     return {
-        "pib": (f"{pib_val}%", txt_pib, cor_pib, pib_dt),
-        "pmi": (f"{pmi_val}", txt_pmi, cor_pmi, pmi_dt)
+        "pib": (f"{pib_val}%", txt_pib, cor_pib, data_dt),
+        "pmi": (f"{pmi_val}", txt_pmi, cor_pmi, data_dt)
     }
-
 # --- RENDERIZAÇÃO NO STREAMLIT: CHINA DINÂMICA ---
 st.subheader("🇨🇳 Radar Macroeconômico — China (PIB & PMI)")
 china_data = buscar_indicadores_china()
@@ -877,15 +893,15 @@ hoje = datetime.date.today()
 inicio_semana = hoje - datetime.timedelta(days=hoje.weekday())
 fim_semana = inicio_semana + datetime.timedelta(days=4)
 
-@st.cache_data(ttl=3600)  # Cache de 1 hora
-def buscar_calendario_forex_factory():
+# Passar a data de início da semana garante que, se mudar de semana, o cache é invalidado automaticamente!
+@st.cache_data(ttl=3600)
+def buscar_calendario_forex_factory(data_ref):
     """Busca o feed JSON oficial do Forex Factory e filtra eventos de alto impacto em USD e EUR."""
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
     try:
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
             dados = response.json()
-            # Filtra eventos de alto impacto (High) para USD e EUR
             moedas_interesse = ["USD", "EUR"]
             eventos_filtrados = [
                 item for item in dados 
@@ -896,8 +912,8 @@ def buscar_calendario_forex_factory():
         st.error(f"Erro ao carregar Forex Factory: {e}")
     return []
 
-# Executa a busca
-eventos_semana = buscar_calendario_forex_factory()
+# Executa a busca passando a referência da semana atual
+eventos_semana = buscar_calendario_forex_factory(inicio_semana)
 
 with col_cal:
     st.subheader(f"📅 Calendário da Semana ({inicio_semana.strftime('%d/%m')} a {fim_semana.strftime('%d/%m')})")
